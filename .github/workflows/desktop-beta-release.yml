@@ -1,0 +1,118 @@
+name: Publish Desktop Beta
+
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: Version without the v prefix
+        required: true
+        default: 1.0.2
+      source_ref:
+        description: Desktop Agent branch, tag or commit
+        required: true
+        default: main
+
+permissions:
+  contents: write
+
+jobs:
+  windows:
+    runs-on: windows-latest
+    timeout-minutes: 40
+    env:
+      CSC_IDENTITY_AUTO_DISCOVERY: "false"
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          repository: Tomek093/live-tray-desktop-agent
+          ref: ${{ inputs.source_ref }}
+          path: app
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 24
+          cache: npm
+          cache-dependency-path: app/package-lock.json
+      - name: Verify requested version
+        working-directory: app
+        shell: bash
+        run: test "$(node -p "require('./package.json').version")" = "${{ inputs.version }}"
+      - run: npm ci
+        working-directory: app
+      - run: npm test
+        working-directory: app
+      - run: npm run dist:win:beta
+        working-directory: app
+      - uses: actions/upload-artifact@v4
+        with:
+          name: windows-release
+          path: |
+            app/release/*.exe
+            app/release/*.blockmap
+            app/release/latest.yml
+          if-no-files-found: error
+
+  macos:
+    runs-on: macos-15
+    timeout-minutes: 50
+    env:
+      CSC_IDENTITY_AUTO_DISCOVERY: "false"
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          repository: Tomek093/live-tray-desktop-agent
+          ref: ${{ inputs.source_ref }}
+          path: app
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 24
+          cache: npm
+          cache-dependency-path: app/package-lock.json
+      - name: Verify requested version
+        working-directory: app
+        run: test "$(node -p "require('./package.json').version")" = "${{ inputs.version }}"
+      - run: npm ci
+        working-directory: app
+      - run: npm test
+        working-directory: app
+      - run: npm run dist:mac:beta
+        working-directory: app
+      - uses: actions/upload-artifact@v4
+        with:
+          name: macos-release
+          path: |
+            app/release/*.dmg
+            app/release/*.zip
+            app/release/*.blockmap
+            app/release/latest-mac.yml
+          if-no-files-found: error
+
+  publish:
+    needs: [windows, macos]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          path: release-assets
+          merge-multiple: true
+      - name: Verify updater metadata and installers
+        shell: bash
+        run: |
+          test -f release-assets/latest.yml
+          test -f release-assets/latest-mac.yml
+          grep -F "version: ${{ inputs.version }}" release-assets/latest.yml
+          grep -F "version: ${{ inputs.version }}" release-assets/latest-mac.yml
+          test -n "$(find release-assets -maxdepth 1 -name '*.exe' -print -quit)"
+          test -n "$(find release-assets -maxdepth 1 -name '*.dmg' -print -quit)"
+      - name: Publish latest unsigned public beta
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          TAG="v${{ inputs.version }}"
+          NOTES="Unsigned public beta for Windows and macOS. The operating system may show an unknown publisher warning. Windows supports in-app installation from Check Update. On macOS, Check Update opens the replacement universal DMG. Includes account-plan enforcement, complete server-side all-time analytics, resilient offline sync and the latest Cloud/PWA compatibility fixes."
+          if gh release view "$TAG" >/dev/null 2>&1; then
+            gh release upload "$TAG" release-assets/* --clobber
+            gh release edit "$TAG" --title "Live Tray Desktop ${TAG} — unsigned public beta" --notes "$NOTES" --latest
+          else
+            gh release create "$TAG" release-assets/* --title "Live Tray Desktop ${TAG} — unsigned public beta" --notes "$NOTES" --latest
+          fi
