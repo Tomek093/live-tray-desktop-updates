@@ -6,14 +6,14 @@ on:
       version:
         description: Version without the v prefix
         required: true
-        default: 1.0.2
+        default: 1.0.3
       source_ref:
         description: Desktop Agent branch, tag or commit
         required: true
         default: main
 
 permissions:
-  contents: write
+  contents: read
 
 jobs:
   windows:
@@ -89,6 +89,8 @@ jobs:
   publish:
     needs: [windows, macos]
     runs-on: ubuntu-latest
+    permissions:
+      contents: write
     steps:
       - uses: actions/download-artifact@v4
         with:
