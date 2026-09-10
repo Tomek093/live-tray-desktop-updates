@@ -50,6 +50,7 @@ jobs:
             app/release/*.blockmap
             app/release/latest.yml
           if-no-files-found: error
+          retention-days: 5
 
   macos:
     runs-on: macos-15
@@ -85,6 +86,7 @@ jobs:
             app/release/*.blockmap
             app/release/latest-mac.yml
           if-no-files-found: error
+          retention-days: 5
 
   publish:
     needs: [windows, macos]
