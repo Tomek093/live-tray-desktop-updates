@@ -61,6 +61,7 @@ jobs:
       - name: Keep a workflow artifact
         uses: actions/upload-artifact@v4
         with:
+          retention-days: 5
           name: LiveTray-macOS-${{ inputs.tag }}
           path: |
             app/release/LiveTray-macOS-*.dmg
